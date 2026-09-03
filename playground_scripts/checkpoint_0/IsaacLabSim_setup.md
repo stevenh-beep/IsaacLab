@@ -495,7 +495,7 @@ An Isaac Sim window opens and displays a 3D scene.
 This works:
 
 ```bash
-./isaaclab.sh -p scripts/tutorials/00_sim/create_empty.py
+./isaaclab.sh -p scripts/tutorials/00_sim/create_empty.py --viz kit
 ```
 
 If all four are true:
@@ -573,7 +573,7 @@ cd ~/groot-poc/IsaacLab
 run:
 
 ```bash
-./isaaclab.sh -p scripts/tutorials/01_assets/run_articulation.py
+./isaaclab.sh -p scripts/tutorials/01_assets/run_articulation.py --viz kit
 ```
 
 You should get a simulation containing cartpole robots that move.
@@ -819,7 +819,7 @@ Once the official Cartpole example works, create your own copy.
 ```bash
 cp \
     scripts/tutorials/01_assets/run_articulation.py \
-    my_first_robot.py
+    playground_scripts/run_articulation_my_first_robot.py
 ```
 
 Now:
@@ -878,7 +878,7 @@ random effort
 From the Isaac Lab directory:
 
 ```bash
-./isaaclab.sh -p my_first_robot.py
+./isaaclab.sh -p playground_scripts/run_articulation_my_first_robot.py  --viz kit
 ```
 
 Now the robot should behave predictably instead of randomly.

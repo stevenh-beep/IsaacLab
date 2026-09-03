@@ -64,6 +64,12 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # Articulation
     cartpole_cfg = CARTPOLE_CFG.copy()
     cartpole_cfg.prim_path = "/World/Origin.*/Robot"
+    for act in cartpole_cfg.actuators.values():
+        act.effort_limit_sim = float("inf")
+        act.velocity_limit_sim = float("inf")
+        act.stiffness = 0.0
+        act.damping = 0.0
+    
     cartpole = Articulation(cfg=cartpole_cfg)
 
     # return the scene information
@@ -77,13 +83,18 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
     # note: we only do this here for readability. In general, it is better to access the entities directly from
     #   the dictionary. This dictionary is replaced by the InteractiveScene class in the next tutorial.
     robot = entities["cartpole"]
+    print(f"[INFO]: Robot Data.joint_pos: {robot.data.joint_pos.torch}")
+    print(f"[INFO]: Robot num_instances: {robot.num_instances}")
+    
+
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
     count = 0
     # Simulation loop
+    log_print = 0
     while simulation_app.is_running():
         # Reset
-        if count % 500 == 0:
+        if count % 600 == 0:
             # reset counter
             count = 0
             # reset the scene entities
@@ -105,22 +116,37 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
             robot.write_joint_velocity_to_sim_index(velocity=joint_vel)
             # clear internal buffers
             robot.reset()
-            print("[INFO]: Resetting robot state...")
+            print("[INFO]: Resetting robot state...")   
+            log_print += 1
         # Apply random action
         # -- generate random joint efforts
-        efforts = torch.randn_like(robot.data.joint_pos.torch) * 5.0
+        # efforts = torch.randn_like(robot.data.joint_pos.torch) * 5.0
+
+        # predictable efforts
+        efforts = torch.zeros_like(robot.data.joint_pos)
+        efforts[0, 0] = 0.0
+        efforts[0, 1] = 0.1
+
+        efforts[1, 1] = 250           # pole – constant high torque → spins like crazy
+        efforts[1, 0] = -10
         # -- apply action to the robot
         robot.set_joint_effort_target_index(target=efforts)
+
         # -- write data to sim
         robot.write_data_to_sim()
         # Perform step
         sim.step()
-        # Increment counter
-        count += 1
+        
         # Update buffers
         robot.update(sim_dt)
-        print(f"[INFO]: Efforts: {efforts}")
-        print(f"[INFO]: Robot: {robot}")
+
+        if count < 100 and log_print <= 1:
+            print(f"count={count}, Effects = {efforts}")
+            print(f"               Applied effort target = {robot.data.joint_effort_target.torch}")
+
+        # Increment counter
+        count += 1
+        
 
 
 def main():
