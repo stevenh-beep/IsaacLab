@@ -118,15 +118,30 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     ik_commands = torch.zeros(scene.num_envs, diff_ik_controller.action_dim, device=robot.device)
     ik_commands[:] = ee_goals[current_goal_idx]
 
+    # gripper control
+    gripper_open = 0.08
+    gripper_close = 0.0002
+    position_threshold = 0.02
+
+    # 2 is because - 
+    # joint names: ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7', 'panda_finger_joint1', 'panda_finger_joint2']
+    # 'panda_finger_joint1', 'panda_finger_joint2' there are 2 joints
+    gripper_commands = torch.zeros(scene.num_envs, 2, device=robot.device)
+    gripper_commands[:] = gripper_close
+
     # Specify robot-specific parameters
     if args_cli.robot == "franka_panda":
         robot_entity_cfg = SceneEntityCfg("robot", joint_names=["panda_joint.*"], body_names=["panda_hand"])
+        gripper_entity_cfg = SceneEntityCfg("robot", joint_names = ['panda_finger_joint.*'])
     elif args_cli.robot == "ur10":
         robot_entity_cfg = SceneEntityCfg("robot", joint_names=[".*"], body_names=["ee_link"])
+        gripper_entity_cfg = None
     else:
         raise ValueError(f"Robot {args_cli.robot} is not supported. Valid: franka_panda, ur10")
     # Resolving the scene entities
     robot_entity_cfg.resolve(scene)
+    if gripper_entity_cfg is not None:
+        gripper_entity_cfg.resolve(scene)
     # Obtain the frame index of the end-effector
     # For a fixed base robot, the frame index is one less than the body index. This is because
     # the root body is not included in the returned Jacobians.
@@ -138,14 +153,14 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     print("[INFO]: joint names:", robot.joint_names)
     print("[INFO]: joint positions:", robot.data.joint_pos.torch)
     print("[INFO]: joint velocities:", robot.data.joint_vel.torch)
-
+    
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
     count = 0
     # Simulation loop
     while simulation_app.is_running():
         # reset
-        if count % 150 == 0:
+        if count % 300 == 0:
             # reset time
             count = 0
             # reset joint state
@@ -160,6 +175,12 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             # reset controller
             diff_ik_controller.reset()
             diff_ik_controller.set_command(ik_commands)
+            
+
+            # resetting the gripper
+            if gripper_entity_cfg is not None:
+                gripper_commands[:] = gripper_close
+
             # change goal
             current_goal_idx = (current_goal_idx + 1) % len(ee_goals)
         else:
@@ -178,8 +199,36 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             # compute the joint commands
             joint_pos_des = diff_ik_controller.compute(ee_pos_b, ee_quat_b, jacobian, joint_pos)
 
+            # setting gripper – only act after the arm has reached the goal
+            if gripper_entity_cfg is not None:
+                # current hand position in world frame
+                current_pos = ee_pose_w[:, 0:3]
+                # goal position in world frame
+                goal_pos = ik_commands[:, 0:3] + scene.env_origins
+
+                # distance between hand and goal
+                pos_error = torch.norm(current_pos - goal_pos, dim=1)
+
+                # only change gripper when close enough
+                arrived = pos_error < position_threshold
+
+                # decide open or close based on goal index (plain Python if is fine here)
+                if current_goal_idx % 2 == 0:
+                    desired_value = gripper_open
+                else:
+                    desired_value = gripper_close
+
+                # apply the decision only to robots that have arrived
+                gripper_commands[arrived] = desired_value
+
         # apply actions
         robot.set_joint_position_target_index(target=joint_pos_des, joint_ids=robot_entity_cfg.joint_ids)
+
+        if gripper_entity_cfg is not None:
+            robot.set_joint_position_target_index(
+               target= gripper_commands,
+               joint_ids = gripper_entity_cfg.joint_ids
+            )
         scene.write_data_to_sim()
         # perform step
         sim.step()

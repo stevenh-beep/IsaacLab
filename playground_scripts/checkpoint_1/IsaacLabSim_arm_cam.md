@@ -1,6 +1,6 @@
 Yes. Since you already completed **Checkpoint A** and the Cartpole version of B, I would now move to a **real robotic arm + gripper**, and then add a camera and inspect exactly what Isaac Lab produces.
 
-One important correction to the earlier roadmap: **for these checkpoints, I would use Franka Panda first, not try to force the DROID embodiment onto an Isaac Lab robot yet.** Franka is already a built-in Isaac Lab manipulation asset, has 7 arm joints + gripper, and Isaac Lab has official examples for both joint-level control and task-space control. ([Isaac Sim][1])
+One important correction to the earlier roadmap: **for these checkpoints, I would use Franka Panda first, not try to force the DROID embodiment onto an Isaac Lab robot yet.** Franka is already a built-in Isaac Lab manipulation asset, has 7 arm joints + gripper, and Isaac Lab has official examples for both joint-level control and task-space control. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/?utm_source=chatgpt.com))
 
 Then, in Checkpoint E/F, we can make the observation/action interface match **GR00T's DROID format**.
 
@@ -59,7 +59,11 @@ simulated robot
 
 ---
 
+
+
 # Checkpoint B — Real robotic arm + gripper
+
+
 
 ## B0 — What robot are we going to use?
 
@@ -96,9 +100,11 @@ Visually, think:
 
 It is a proper 7-DOF manipulation arm with a parallel gripper.
 
-Isaac Lab includes Franka as one of its built-in fixed-arm robots. ([Isaac Sim][1])
+Isaac Lab includes Franka as one of its built-in fixed-arm robots. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/?utm_source=chatgpt.com))
 
 ---
+
+
 
 # B1 — First, find the current Franka examples
 
@@ -135,11 +141,44 @@ franka_panda
 ur10
 ```
 
-and uses a Franka configuration called `FRANKA_PANDA_HIGH_PD_CFG`. ([Isaac Sim][2])
+and uses a Franka configuration called `FRANKA_PANDA_HIGH_PD_CFG`. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/05_controllers/run_diff_ik.html?utm_source=chatgpt.com))
 
 ---
 
+
+
 # B2 — Run the Franka differential-IK example
+
+
+| Neural Network World                | Robot Arm (Differential IK) World                     |
+| ----------------------------------- | ----------------------------------------------------- |
+| **Loss function**                   | How far the hand is from the desired pose (the error) |
+| **Gradient**                        | Jacobian                                              |
+| **Optimizer / Solver** (SGD, Adam…) | Differential IK controller                            |
+| **Network weights**                 | Joint angles                                          |
+| **One training step**               | One small joint correction                            |
+| **Many training steps**             | Hand gradually moves to the target                    |
+
+
+### Why they feel so similar
+
+In a neural network:
+
+1. You compute the loss (how wrong the prediction is).
+2. You compute the gradient (how each weight affects the loss).
+3. You take a small step to reduce the loss.
+
+In Differential IK:
+
+1. You compute the pose error (how far the hand is from the goal).
+2. You use the **Jacobian** (how each joint affects the hand pose).
+3. You take a small step in joint space to reduce the error.
+
+The Jacobian plays almost exactly the same role as the gradient.
+
+That’s why Differential IK is sometimes called a “local linear approximation” or “gradient-based” method for solving Inverse Kinematics — it keeps making small corrective steps using local sensitivity information (the Jacobian), just like gradient descent.
+
+
 
 Try:
 
@@ -149,7 +188,7 @@ Try:
 
 If your checkout contains that tutorial at that path, this should open Isaac Sim with the Franka arm.
 
-The current official tutorial creates a Franka robot and a differential inverse-kinematics controller. ([Isaac Sim][2])
+The current official tutorial creates a Franka robot and a differential inverse-kinematics controller. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/05_controllers/run_diff_ik.html?utm_source=chatgpt.com))
 
 You should see something like:
 
@@ -178,6 +217,8 @@ You should see something like:
 and the arm should move between predefined end-effector goals.
 
 ---
+
+
 
 # B3 — What just happened?
 
@@ -226,9 +267,11 @@ joint commands
 robot moves
 ```
 
-The official Isaac Lab example uses `DifferentialIKController` for exactly this purpose. ([Isaac Sim][2])
+The official Isaac Lab example uses `DifferentialIKController` for exactly this purpose. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/05_controllers/run_diff_ik.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # B4 — But we want to understand joint control first
 
@@ -258,9 +301,11 @@ robot.data.joint_pos
 
 That gives the current joint positions.
 
-Isaac Lab's articulation tutorial specifically demonstrates reading joint state and applying commands to articulated robots. ([Isaac Sim][3])
+Isaac Lab's articulation tutorial specifically demonstrates reading joint state and applying commands to articulated robots. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/01_assets/run_articulation.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # B5 — Find the Franka configuration
 
@@ -291,9 +336,11 @@ The current official IK tutorial uses:
 FRANKA_PANDA_HIGH_PD_CFG
 ```
 
-for the Panda. ([Isaac Sim][2])
+for the Panda. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/05_controllers/run_diff_ik.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # B6 — Understand the Franka state
 
@@ -346,6 +393,8 @@ where:
 
 ---
 
+
+
 # B7 — Make your first controlled movement
 
 Rather than modifying the official tutorial immediately, I recommend making a copy:
@@ -353,7 +402,9 @@ Rather than modifying the official tutorial immediately, I recommend making a co
 ```bash
 cp \
 scripts/tutorials/05_controllers/run_diff_ik.py \
-~/groot-poc/my_franka.py
+/home/axonex/Documents/IsaacLab/playground_scripts/checkpoint_1/run_diff_ik_my_franka.py
+
+./isaaclab.sh -p /home/axonex/Documents/IsaacLab/playground_scripts/checkpoint_1/run_diff_ik_my_franka.py --viz kit --num_envs 1
 ```
 
 Then:
@@ -396,6 +447,8 @@ move back to A
 
 ---
 
+
+
 # B8 — Don't touch the gripper yet
 
 For the **first** experiment, just move the arm.
@@ -433,6 +486,8 @@ gripper opens/closes
 Then combine them.
 
 ---
+
+
 
 # B9 — Test the gripper
 
@@ -477,6 +532,8 @@ if that's what your installed configuration reports.
 
 ---
 
+
+
 # B10 — Your first useful robot-state print
 
 Add something like:
@@ -519,6 +576,8 @@ is the **simulated robot's current state**.
 
 ---
 
+
+
 # B11 — Understand the simulation loop
 
 At this point you should be able to visualize:
@@ -553,6 +612,8 @@ This is the fundamental interface we'll eventually use for GR00T.
 
 ---
 
+
+
 # B12 — Checkpoint B success criteria
 
 Don't move to the camera until all of these work:
@@ -564,6 +625,8 @@ Don't move to the camera until all of these work:
 ☑ gripper visible
 ```
 
+
+
 ### 2. Arm moves
 
 ```text
@@ -571,17 +634,23 @@ Don't move to the camera until all of these work:
 ☑ not just random motion
 ```
 
+
+
 ### 3. You can read state
 
 ```python
 robot.data.joint_pos
 ```
 
+
+
 ### 4. You can identify joints
 
 ```python
 robot.joint_names
 ```
+
+
 
 ### 5. Gripper can eventually be controlled
 
@@ -595,6 +664,8 @@ Once that's working:
 # ✅ CHECKPOINT B PASSED
 
 ---
+
+
 
 # Checkpoint C — Add a simulated camera
 
@@ -615,9 +686,11 @@ The target is:
               RGB image
 ```
 
-Isaac Lab's camera system is a renderer-backed sensor. The camera can output RGB, depth, normals and other data. ([Isaac Sim][4])
+Isaac Lab's camera system is a renderer-backed sensor. The camera can output RGB, depth, normals and other data. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/overview/core-concepts/sensors/camera.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # C1 — Find the camera example
 
@@ -633,9 +706,11 @@ You should find something similar to:
 scripts/tutorials/04_sensors/...
 ```
 
-The current Isaac Lab documentation includes a `run_usd_camera.py` tutorial specifically for using a camera sensor. ([Isaac Sim][5])
+The current Isaac Lab documentation includes a `run_usd_camera.py` tutorial specifically for using a camera sensor. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/main/source/how-to/save_camera_output.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # C2 — Run the official camera example first
 
@@ -644,10 +719,10 @@ Try:
 ```bash
 ./isaaclab.sh -p \
 scripts/tutorials/04_sensors/run_usd_camera.py \
---enable_cameras
+--enable_cameras --viz kit --num_envs 1
 ```
 
-The current official example documents this exact GUI invocation. ([Isaac Sim][5])
+The current official example documents this exact GUI invocation. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/main/source/how-to/save_camera_output.html?utm_source=chatgpt.com))
 
 You should see a scene with a camera.
 
@@ -666,6 +741,8 @@ image
 before combining it with our Franka.
 
 ---
+
+
 
 # C3 — Understand what an RGB image actually is
 
@@ -719,9 +796,11 @@ with values:
 0 ... 255
 ```
 
-The current Isaac Lab camera documentation explicitly specifies this `(num_cameras, height, width, 3)` RGB format and `torch.uint8` type. ([Isaac Sim][4])
+The current Isaac Lab camera documentation explicitly specifies this `(num_cameras, height, width, 3)` RGB format and `torch.uint8` type. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/overview/core-concepts/sensors/camera.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # C4 — Add a camera to the Franka scene
 
@@ -771,9 +850,11 @@ camera_cfg = CameraCfg(
 )
 ```
 
-The exact spawn configuration should follow the camera example in your installed Isaac Lab version; the current API supports RGB through `data_types=["rgb"]`. ([Isaac Sim][4])
+The exact spawn configuration should follow the camera example in your installed Isaac Lab version; the current API supports RGB through `data_types=["rgb"]`. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/overview/core-concepts/sensors/camera.html?utm_source=chatgpt.com))
 
 ---
+
+
 
 # C5 — Position the camera
 
@@ -803,11 +884,13 @@ exterior_image_1_left
 wrist_image_left
 ```
 
-as its two visual inputs. ([GitHub][6])
+as its two visual inputs. ([GitHub](https://github.com/NVIDIA/Isaac-GR00T/blob/main/examples/DROID/README.md?utm_source=chatgpt.com))
 
 We will eventually recreate that structure.
 
 ---
+
+
 
 # C6 — Read the RGB image
 
@@ -823,7 +906,7 @@ you can access:
 image = camera.data.output["rgb"]
 ```
 
-The current Isaac Lab API documents exactly this pattern for camera output. ([Isaac Sim][4])
+The current Isaac Lab API documents exactly this pattern for camera output. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/develop/source/overview/core-concepts/sensors/camera.html?utm_source=chatgpt.com))
 
 Then:
 
@@ -843,6 +926,8 @@ Again, your exact resolution may differ.
 
 ---
 
+
+
 # Checkpoint C success criteria
 
 You want:
@@ -861,6 +946,8 @@ Then:
 # ✅ CHECKPOINT C PASSED
 
 ---
+
+
 
 # Checkpoint D — Inspect the observation
 
@@ -900,6 +987,8 @@ This is going to be very useful later when we connect GR00T.
 
 ---
 
+
+
 # D1 — Define the state
 
 For this first exercise, let's keep it simple:
@@ -936,6 +1025,8 @@ tensor([
 
 ---
 
+
+
 # D2 — Define the image
 
 ```python
@@ -957,6 +1048,8 @@ image.dtype: torch.uint8
 ```
 
 ---
+
+
 
 # D3 — Remove the batch dimension
 
@@ -982,6 +1075,8 @@ That's exactly the sort of array you're familiar with from OpenCV.
 
 ---
 
+
+
 # D4 — Display the image
 
 For the simplest first test, use Matplotlib.
@@ -1002,7 +1097,7 @@ plt.show()
 
 You should see the actual camera view.
 
-However, **don't use `plt.show()` every simulation timestep**.
+However, **don't use** `plt.show()` **every simulation timestep**.
 
 That will stop/block the simulation.
 
@@ -1020,6 +1115,8 @@ if step_count == 100:
 ```
 
 ---
+
+
 
 # D5 — Better: save the image
 
@@ -1069,6 +1166,8 @@ your eyes
 
 ---
 
+
+
 # D6 — Print actual pixel values
 
 Because you specifically want to understand the observation rather than treat it as magic, also print:
@@ -1112,6 +1211,8 @@ B = 171
 ```
 
 ---
+
+
 
 # D7 — Your complete observation now
 
@@ -1164,6 +1265,8 @@ That is **exactly the conceptual foundation we need for VLA**.
 
 ---
 
+
+
 # One important distinction before we move to GR00T
 
 At this point our Franka observation is **not yet DROID format**.
@@ -1199,7 +1302,7 @@ with:
 9 + 1 + 7 = 17 state dimensions
 ```
 
-and the corresponding 17-D action representation. ([GitHub][6])
+and the corresponding 17-D action representation. ([GitHub](https://github.com/NVIDIA/Isaac-GR00T/blob/main/examples/DROID/README.md?utm_source=chatgpt.com))
 
 So don't try to feed:
 
@@ -1212,6 +1315,8 @@ directly into GR00T yet.
 We first need to build the **DROID observation adapter**.
 
 ---
+
+
 
 # Where you should be after these steps
 
@@ -1258,6 +1363,8 @@ And your conceptual system is:
                  GR00T N1.7
 ```
 
+
+
 ## The next checkpoint I recommend
 
 **Do not connect GR00T immediately.**
@@ -1287,14 +1394,6 @@ The next step should be a small but very important **Checkpoint E: make the simu
 
 Then we'll print every key, shape, dtype and value.
 
-After that, we can put **the real `GR00T-N1.7-3B` DROID policy in the loop** and inspect its **17-D action chunk before executing anything**. That will give you a clean bridge from the DROID inference you've already done to the simulated robot.
+After that, we can put **the real** `GR00T-N1.7-3B` **DROID policy in the loop** and inspect its **17-D action chunk before executing anything**. That will give you a clean bridge from the DROID inference you've already done to the simulated robot.
 
-The official GR00T DROID interface is exactly the reason for doing this adapter explicitly: NVIDIA documents the two camera inputs, 17-D state, language instruction, and 17-D action structure for `OXE_DROID_RELATIVE_EEF_RELATIVE_JOINT`. ([GitHub][6])
-
-[1]: https://isaac-sim.github.io/IsaacLab/?utm_source=chatgpt.com "Welcome to Isaac Lab! — Isaac Lab Documentation"
-[2]: https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/05_controllers/run_diff_ik.html?utm_source=chatgpt.com "Using a task-space controller — Isaac Lab Documentation"
-[3]: https://isaac-sim.github.io/IsaacLab/develop/source/tutorials/01_assets/run_articulation.html?utm_source=chatgpt.com "Interacting with an articulation — Isaac Lab Documentation"
-[4]: https://isaac-sim.github.io/IsaacLab/develop/source/overview/core-concepts/sensors/camera.html?utm_source=chatgpt.com "Camera — Isaac Lab Documentation"
-[5]: https://isaac-sim.github.io/IsaacLab/main/source/how-to/save_camera_output.html?utm_source=chatgpt.com "Saving rendered images and 3D re-projection — Isaac Lab Documentation"
-[6]: https://github.com/NVIDIA/Isaac-GR00T/blob/main/examples/DROID/README.md?utm_source=chatgpt.com "Isaac-GR00T/examples/DROID/README.md at main · NVIDIA/Isaac-GR00T · GitHub"
-
+The official GR00T DROID interface is exactly the reason for doing this adapter explicitly: NVIDIA documents the two camera inputs, 17-D state, language instruction, and 17-D action structure for `OXE_DROID_RELATIVE_EEF_RELATIVE_JOINT`. ([GitHub](https://github.com/NVIDIA/Isaac-GR00T/blob/main/examples/DROID/README.md?utm_source=chatgpt.com))
