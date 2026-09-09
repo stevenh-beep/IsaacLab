@@ -160,6 +160,8 @@ and uses a Franka configuration called `FRANKA_PANDA_HIGH_PD_CFG`. ([Isaac Sim](
 | **Many training steps**             | Hand gradually moves to the target                    |
 
 
+
+
 ### Why they feel so similar
 
 In a neural network:
@@ -177,8 +179,6 @@ In Differential IK:
 The Jacobian plays almost exactly the same role as the gradient.
 
 That’s why Differential IK is sometimes called a “local linear approximation” or “gradient-based” method for solving Inverse Kinematics — it keeps making small corrective steps using local sensitivity information (the Jacobian), just like gradient descent.
-
-
 
 Try:
 
@@ -719,7 +719,7 @@ Try:
 ```bash
 ./isaaclab.sh -p \
 scripts/tutorials/04_sensors/run_usd_camera.py \
---enable_cameras --viz kit --num_envs 1
+--enable_cameras --viz kit
 ```
 
 The current official example documents this exact GUI invocation. ([Isaac Sim](https://isaac-sim.github.io/IsaacLab/main/source/how-to/save_camera_output.html?utm_source=chatgpt.com))

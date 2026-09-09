@@ -199,9 +199,10 @@ def run_simulator(sim: sim_utils.SimulationContext, scene_entities: dict):
     camera_index = args_cli.camera_id
 
     # Create the markers for the --draw option outside of is_running() loop
-    if sim.get_setting("/isaaclab/has_gui") and args_cli.draw:
+    # if sim.get_setting("/isaaclab/has_gui") and args_cli.draw:
+    if args_cli.draw:
         cfg = RAY_CASTER_MARKER_CFG.replace(prim_path="/Visuals/CameraPointCloud")
-        cfg.markers["hit"].radius = 0.002
+        cfg.markers["hit"].radius = 0.2
         pc_markers = VisualizationMarkers(cfg)
 
     # Simulate physics
@@ -249,24 +250,31 @@ def run_simulator(sim: sim_utils.SimulationContext, scene_entities: dict):
             rep_writer.write(rep_output)
 
         # Draw pointcloud if there is a GUI and --draw has been passed
-        if (
-            sim.get_setting("/isaaclab/has_gui")
-            and args_cli.draw
-            and "distance_to_image_plane" in camera.data.output.keys()
-        ):
-            # Derive pointcloud from camera at camera_index
+        if args_cli.draw and "distance_to_image_plane" in camera.data.output.keys():
+            # Get depth and intrinsics
+            depth = camera.data.output["distance_to_image_plane"][camera_index]
+            intrinsics = camera.data.intrinsic_matrices[camera_index]
+
+            # Create point cloud in camera frame first
+            from isaaclab.sensors.camera.utils import create_pointcloud_from_depth
             pointcloud = create_pointcloud_from_depth(
-                intrinsic_matrix=camera.data.intrinsic_matrices[camera_index],
-                depth=camera.data.output["distance_to_image_plane"][camera_index],
+                intrinsic_matrix=intrinsics,
+                depth=depth,
                 position=camera.data.pos_w[camera_index],
                 orientation=camera.data.quat_w_ros[camera_index],
                 device=sim.device,
             )
 
-            # In the first few steps, things are still being instanced and Camera.data
-            # can be empty. If we attempt to visualize an empty pointcloud it will crash
-            # the sim, so we check that the pointcloud is not empty.
             if pointcloud.size()[0] > 0:
+                print(f"Points: {pointcloud.size()[0]}")
+                print(f"Min: {pointcloud.min(dim=0).values}")
+                print(f"Max: {pointcloud.max(dim=0).values}")
+                print(f"Camera pos: {camera.data.pos_w[camera_index]}")
+                print(f"Camera quat: {camera.data.quat_w_ros[camera_index]}")
+
+                # Strong downsampling
+                pointcloud = pointcloud[::80]
+
                 pc_markers.visualize(translations=pointcloud)
 
 
