@@ -15,7 +15,7 @@ PhysX. This helps perform parallelized computation of the inverse kinematics.
     ./isaaclab.sh -p scripts/tutorials/05_controllers/run_diff_ik.py --viz kit
 
     # Usage w/ single cam
-    ./isaaclab.sh -p playground_scripts/checkpoint_1/run_diff_ik_my_franka.py --robot franka_panda --num_envs 1 --enable_cameras --save --viz kit
+    ./isaaclab.sh -p playground_scripts/checkpoint_1/run_diff_ik_my_franka_dual_cam.py --robot franka_panda --num_envs 2 --enable_cameras --save --viz kit
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -35,6 +35,14 @@ parser.add_argument(
     default=False,
     help="Save RGB (and other) images from the added camera.",
 )
+
+parser.add_argument(
+    "--save_interval",
+    type=int,
+    default=10,
+    help="Save a fixed+wrist image pair every N simulation steps (only when --save is set).",
+)
+
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -58,6 +66,7 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.math import subtract_frame_transforms
+from isaaclab.assets import RigidObjectCfg
 
 ##
 # Pre-defined configs
@@ -74,6 +83,7 @@ from isaaclab_physx.renderers import IsaacRtxRendererCfg
 
 import matplotlib.pyplot as plt
 from PIL import Image
+import numpy as np
 
 
 @configclass
@@ -109,11 +119,12 @@ class TableTopSceneCfg(InteractiveSceneCfg):
         raise ValueError(f"Robot {args_cli.robot} is not supported. Valid: franka_panda, ur10")
 
     # Fixed external camera that looks at the table / Franka workspace
-    camera = CameraCfg(
-        prim_path="{ENV_REGEX_NS}/CameraSensor",          # one camera per env
+    fixed_camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/FixedCamera",          # one camera per env
         update_period=0.0,                                # update every physics step
         height=480,
         width=640,
+        debug_vis=True,
         data_types=["rgb"],                               # start minimal; add "distance_to_image_plane" etc. later if needed
         # Optional – match the reference script’s colourisation behaviour
         # renderer_cfg=IsaacRtxRendererCfg(
@@ -135,26 +146,90 @@ class TableTopSceneCfg(InteractiveSceneCfg):
         ),
     )
 
+    # Wrist / in-hand camera (standard Isaac Lab Franka pattern)
+    wrist_camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/panda_hand/wrist_cam",
+        update_period=0.0,                                # every physics step (matches fixed)
+        height=480,
+        width=640,
+        debug_vis=True,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0,
+            focus_distance=400.0,
+            horizontal_aperture=20.955,
+            clipping_range=(0.1, 1.0e5),
+        ),
+        # Small offset in front of the hand, looking outward (ROS convention)
+        # This is the canonical offset used in Isaac Lab stack / visuomotor examples.
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, 0.12, 0.1),       
+            rot=(1.0, 0.0, 0.0, 0.0),       
+            convention="ros",
+        ),
+    )
+
+    tall_marker = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Marker",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.55, 0.0, 0.30),          # slightly in front of the default workspace, on the table
+            rot=(0.0, 0.0, 0.0, 0.0),
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=(0.08, 0.08, 0.60),         # tall thin pillar (0.6 m high)
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=False,
+                max_depenetration_velocity=5.0,
+            ),
+            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(1.0, 0.2, 0.0),   # bright orange – very visible
+                metallic=0.1,
+            ),
+        ),
+    )
+
 
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     """Runs the simulation loop."""
     # Extract scene entities
     # note: we only do this here for readability.
     robot = scene["robot"]
-    camera: Camera = scene["camera"]          # <-- new
+    fixed_camera: Camera = scene["fixed_camera"]
+    wrist_camera: Camera  = scene["wrist_camera"]
 
-    # Optional writer (only if --save)
+    # # Optional writer (only if --save)
+    # if args_cli.save:
+    #     output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "franka_camera")
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     rep_writer = rep.BasicWriter(
+    #         output_dir=output_dir,
+    #         frame_padding=0,
+    #         # pass the colourise flags if you enabled them in CameraCfg
+    #         # colorize_instance_id_segmentation=...,
+    #         # colorize_instance_segmentation=...,
+    #         # colorize_semantic_segmentation=...,
+    #     )
+
     if args_cli.save:
-        output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "franka_camera")
-        os.makedirs(output_dir, exist_ok=True)
-        rep_writer = rep.BasicWriter(
-            output_dir=output_dir,
-            frame_padding=0,
-            # pass the colourise flags if you enabled them in CameraCfg
-            # colorize_instance_id_segmentation=...,
-            # colorize_instance_segmentation=...,
-            # colorize_semantic_segmentation=...,
+        base_output_dir = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "output",
+            "franka_dual_cam",
         )
+        fixed_dir = os.path.join(base_output_dir, "fixed")
+        wrist_dir = os.path.join(base_output_dir, "wrist")
+        os.makedirs(fixed_dir, exist_ok=True)
+        os.makedirs(wrist_dir, exist_ok=True)
+
+        combined_dir = os.path.join(base_output_dir, "combined")
+        os.makedirs(combined_dir, exist_ok=True)
+
+        print(f"[INFO] Saving image pairs every {args_cli.save_interval} steps to:\n"
+            f"       {fixed_dir}\n"
+            f"       {wrist_dir}"
+            f"       {combined_dir}")
 
     # Create controller
     diff_ik_cfg = DifferentialIKControllerCfg(command_type="pose", use_relative_mode=False, ik_method="dls")
@@ -162,15 +237,21 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
 
     # Markers
     frame_marker_cfg = FRAME_MARKER_CFG.copy()
-    frame_marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
+    frame_marker_cfg.markers["frame"].scale = (0.02, 0.02, 0.02)
     ee_marker = VisualizationMarkers(frame_marker_cfg.replace(prim_path="/Visuals/ee_current"))
     goal_marker = VisualizationMarkers(frame_marker_cfg.replace(prim_path="/Visuals/ee_goal"))
+
+    cam_marker_cfg = FRAME_MARKER_CFG.copy()
+    cam_marker_cfg.markers["frame"].scale = (0.06, 0.06, 0.06)  # nice visible size
+    wrist_cam_marker = VisualizationMarkers(
+        cam_marker_cfg.replace(prim_path="/Visuals/wrist_cam_frame")
+    )
 
     # Define goals for the arm (x,y,z,qx,qy,qz,qw)
     ee_goals = [
         [0.5, 0.5, 0.7, 0, 0.707, 0, 0.707],
-        [0.5, -0.4, 0.6, 0.707, 0, 0, 0.707],
-        [0.5, 0, 0.5, 1.0, 0.0, 0.0, 0.0],
+        # [0.5, -0.4, 0.6, 0.707, 0, 0, 0.707],
+        # [0.5, 0, 0.5, 1.0, 0.0, 0.0, 0.0],
     ]
     ee_goals = torch.tensor(ee_goals, device=sim.device)
     # Track the given command
@@ -299,11 +380,13 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         scene.update(sim_dt)
 
         # Update camera data (the scene already calls sensor updates, but explicit is fine)
-        camera.update(dt=sim_dt)
+        fixed_camera.update(dt=sim_dt)
+        wrist_camera.update(dt=sim_dt)
 
         # Optional: print shapes once in a while for sanity
         if count % 100 == 0:
-            print(f"[Camera] RGB shape: {camera.data.output['rgb'].shape}")
+            print(f"[Cameras] Fixed RGB: {fixed_camera.data.output['rgb'].shape} | "
+          f"Wrist RGB: {wrist_camera.data.output['rgb'].shape}")
 
             # image_np = camera.data.output["rgb"][0].cpu().numpy()
 
@@ -314,29 +397,44 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             # Image.fromarray(image_np).save("franka_camera.png")
 
         # Save (only env 0 to keep disk usage reasonable; change the slice if you want all envs)
-        if args_cli.save:
-            single_cam_data = convert_dict_to_backend(
-                {k: v[0] for k, v in camera.data.output.items()},   # env 0
-                backend="numpy",
+        if args_cli.save and (count % args_cli.save_interval == 0):
+            cam_id = 1
+            # Fixed camera
+            fixed_rgb = fixed_camera.data.output["rgb"][cam_id].cpu().numpy()   # (H, W, 3) or (H, W, 4)
+            if fixed_rgb.shape[-1] == 4:                                   # drop alpha if present
+                fixed_rgb = fixed_rgb[..., :3]
+            Image.fromarray(fixed_rgb.astype(np.uint8)).save(
+                os.path.join(fixed_dir, f"frame_{count:06d}.png")
             )
-            rep_output = {"annotators": {}}
-            for key, data in single_cam_data.items():
 
-                annotator_key = "rgb" if key in ("rgb", "rgba") else key
+            # Wrist camera
+            wrist_rgb = wrist_camera.data.output["rgb"][cam_id].cpu().numpy()
+            if wrist_rgb.shape[-1] == 4:
+                wrist_rgb = wrist_rgb[..., :3]
+            Image.fromarray(wrist_rgb.astype(np.uint8)).save(
+                os.path.join(wrist_dir, f"frame_{count:06d}.png")
+            )
 
-                info = camera.data.info.get(key)
-                if info is not None:
-                    rep_output["annotators"][annotator_key] = {"render_product": {"data": data, **info}}
-                else:
-                    rep_output["annotators"][annotator_key] = {"render_product": {"data": data}}
-            rep_output["trigger_outputs"] = {"on_time": camera.frame[0]}
-            rep_writer.write(rep_output)
+            # --- Combined side-by-side (fixed | wrist) ---
+            # Ensure same height (they already are, but this is safe)
+            h = min(fixed_rgb.shape[0], wrist_rgb.shape[0])
+            fixed_rgb = fixed_rgb[:h]
+            wrist_rgb = wrist_rgb[:h]
+            combined = np.concatenate([fixed_rgb, wrist_rgb], axis=1)   # horizontal concat
+            Image.fromarray(combined).save(
+                os.path.join(combined_dir, f"frame_{count:06d}.png")
+            )
 
         # obtain quantities from simulation
         ee_pose_w = robot.data.body_state_w.torch[:, robot_entity_cfg.body_ids[0], 0:7]
         # update marker positions
         ee_marker.visualize(ee_pose_w[:, 0:3], ee_pose_w[:, 3:7])
         goal_marker.visualize(ik_commands[:, 0:3] + scene.env_origins, ik_commands[:, 3:7])
+        # Visualize the wrist camera pose (env 0)
+        wrist_cam_marker.visualize(
+            wrist_camera.data.pos_w[0:1],
+            wrist_camera.data.quat_w_world[0:1]   # or quat_w_ros depending on your Isaac Lab version
+        )
 
 
 def main():
@@ -352,7 +450,7 @@ def main():
     # Play the simulator
     sim.reset()
 
-    camera: Camera = scene["camera"]
+    fixed_camera: Camera = scene["fixed_camera"]
 
     # Define the desired view (same style as the reference script)
     # These are offsets relative to each environment origin.
@@ -364,7 +462,7 @@ def main():
     targets = scene.env_origins + target_offset
 
     # Apply the view (this computes the correct orientation for you)
-    camera.set_world_poses_from_view(eyes, targets)
+    fixed_camera.set_world_poses_from_view(eyes, targets)
 
     # Now we are ready!
     print("[INFO]: Setup complete...")

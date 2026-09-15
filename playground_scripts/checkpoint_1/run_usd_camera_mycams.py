@@ -17,6 +17,9 @@ the simulator or OpenGL convention for the camera, we use the robotics or ROS co
     # Usage with headless
     ./isaaclab.sh -p scripts/tutorials/04_sensors/run_usd_camera.py --headless --enable_cameras
 
+    ./isaaclab.sh -p playground_scripts/checkpoint_1/run_usd_camera_mycams.py --enable_cameras --viz kit --save --draw --camera_id 1
+
+
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -182,7 +185,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene_entities: dict):
     )
 
     # Camera positions, targets, orientations
-    camera_positions = torch.tensor([[2.5, 2.5, 2.5], [-2.5, -2.5, 2.5]], device=sim.device)
+    camera_positions = torch.tensor([[2.5, 2.5, 3.5], [-2.5, -2.5, 2.5]], device=sim.device)
     camera_targets = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=sim.device)
     # These orientations are in ROS-convention, and will position the cameras to view the origin
     camera_orientations = torch.tensor(  # noqa: F841
